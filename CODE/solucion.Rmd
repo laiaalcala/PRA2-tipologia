@@ -1,0 +1,1020 @@
+---
+---
+---
+
+```{r}
+if (!require('ggplot2')) install.packages('ggplot2'); library('ggplot2');
+if (!require('readr')) install.packages('readr'); library('readr');
+if (!require('Rmisc')) install.packages('Rmisc'); library('Rmisc');
+if (!require('dplyr')) install.packages('dplyr'); library('dplyr');
+if (!require('haven')) install.packages('haven'); library('haven')
+brfss_2021_dataset <- read_xpt('LLCP2021.XPT')
+```
+
+## Limpieza de datos
+
+Una vez cargado el dataset original, procedemos solo a seleccionar las columnas objetivo que fueron descritas en el documento de la practica.
+
+```{r}
+columns <- c("_STATE","FMONTH","DIABETE4","_RFHYPE6","TOLDHI3","_CHOLCH3", "_BMI5","_SMOKER3","_RFSMOK3","_MICHD","CVDSTRK3","_TOTINDA","_FRTLT1A","FRUITJU2","_VEGLT1A","FVGREEN1","FRENCHF1","_RFDRHV7","_HLTHPLN","MEDCOST1","CHECKUP1","GENHLTH", "PHYSHLTH","MENTHLTH","DIFFWALK","SMOKE100","PDIABTST","BLDSUGAR","DOCTDIAB","CHKHEMO3","SEXVAR","LANDSEX","_AGEG5YR", "EDUCA", "_EDUCAG","INCOME3")
+
+diabetesData <- select(brfss_2021_dataset, columns)
+summary(diabetesData$DIABETE4)
+str(diabetesData)
+```
+
+Eliminación de valores nulos en las columnas dependientes
+
+```{r}
+sort(colMeans(is.na(diabetesData)), decreasing = TRUE)
+```
+
+Columnas que tengan al menos 2% de valores vacíos
+
+```{r}
+columns_to_remove <- which(colMeans(is.na(diabetesData)) > 0.02)
+columns_to_remove
+```
+
+Para este caso, podemos observar que existen varias columnas que cuentan con un porcentaje mayor al 2% de valores nulos, gran parte de esas columnas son características propias de una persona diabética y que este universo de personas dio respuesta en la encuesta, es por ello que decidimos no eliminar ninguna columna, ya que más adelante analizaremos solo a las personas diabéticas independientemente de las características "vacías".
+
+A continuación, realizaremos una selección, reemplazo y eliminación en la columna DIABETE4, ya que para este estudio solo nos interesara saber si una persona respondió si es diabética o no, según los siguientes criterios:
+
+Antes de continuar, dentro de las respuestas puede darse el caso que se encuentren respuestas vacias o que diractamente se rechazo a responder, para estos casos, estas respuestas seran eliminadas directamente del dataset, ya que no aporta valor al analisis.
+
+```         
+# Let's make this ordinal. 0 is for no diabetes or only during pregnancy, 1 is for prediabetes or borderline diabetes, 2 is for yes diabetes.
+# remove all 7 (dont knows)
+# remove all 9 (refused)
+```
+
+```{r}
+diabetesData$DIABETE4[diabetesData$DIABETE4 %in% c(2,3)]<- 0 
+diabetesData$DIABETE4[diabetesData$DIABETE4 ==4 ]<- 1
+diabetesData$DIABETE4[diabetesData$DIABETE4 ==1 ]<- 2
+
+diabetesData = subset(diabetesData, !(DIABETE4 %in% c(7,9)))
+diabetesData = subset(diabetesData, !is.na(DIABETE4))
+summary(diabetesData$DIABETE4)
+
+```
+
+```         
+#_RFHYPE6
+# Cambiar 1 a 0 para que represente No hipertensión y 2 a 1 para que represente Hipertensión.
+```
+
+```{r}
+diabetesData["_RFHYPE6"][diabetesData["_RFHYPE6"] ==1 ]<- 0
+diabetesData["_RFHYPE6"][diabetesData["_RFHYPE6"] ==2 ]<- 1
+
+diabetesData = subset(diabetesData, diabetesData["_RFHYPE6"] !=9)
+diabetesData = subset(diabetesData, !is.na("_RFHYPE6"))
+
+summary(diabetesData["_RFHYPE6"])
+
+```
+
+```         
+#TOLDHI3
+# Change 2 to 0 because it is No
+# Remove all 7 (dont knows)
+# Remove all 9 (refused)
+```
+
+```{r}
+sum(is.na(diabetesData$TOLDHI3))
+```
+
+Antes de empezar con la limpieza de la columna, podemos identificar que existen 59991 registros que deben ser removidos del dataset a estudiar, ya que pertenecen a preguntas no respondidas en la encuesta, de preferencia es necesario no tomar en cuenta estos registros, ya que pueden afectar al resultado final del análisis.
+
+```{r}
+#diabetesData$TOLDHI3
+diabetesData$TOLDHI3[diabetesData$TOLDHI3 ==2 ]<- 0
+
+diabetesData = subset(diabetesData, !TOLDHI3 %in% c(7,9))
+diabetesData = subset(diabetesData, !is.na(TOLDHI3))
+summary(diabetesData$TOLDHI3)
+```
+
+```         
+#_CHOLCHK
+# Change 3 to 0 and 2 to 0 for Not checked cholesterol in past 5 years
+# Remove 9
+```
+
+```{r}
+sum(is.na(diabetesData["_CHOLCH3"]))
+diabetesData = subset(diabetesData, !is.na(diabetesData["_BMI5"]))
+diabetesData["_CHOLCH3"][diabetesData["_CHOLCH3"] == 3 ]<- 0
+diabetesData = subset(diabetesData, diabetesData["_CHOLCH3"] !=9)
+
+summary(diabetesData["_CHOLCH3"])
+```
+
+La siguiente columna realizaremos un cálculo para tener el valor dentro del rango aceptado del Índice de masa corporal, para ello es necesario multiplicar cada registro por 100, pero antes es necesario remover todos los registros que estén vacíos o nulos.
+
+```         
+#_BMI5 (no changes, just note that these are BMI * 100. So for example a BMI of 4018 is really 40.18)
+```
+
+```{r}
+sum(is.na(diabetesData["_BMI5"]))
+diabetesData = subset(diabetesData, !is.na(diabetesData["_BMI5"]))
+diabetesData["_BMI5"]<- round(diabetesData["_BMI5"]/100, 0)
+
+summary(diabetesData["_BMI5"])
+```
+
+```         
+#SMOKE100
+# Change 2 to 0 because it is No
+# Remove all 7 (dont knows)
+# Remove all 9 (refused)
+```
+
+```{r}
+sum(is.na(diabetesData$SMOKE100))
+diabetesData = subset(diabetesData, !is.na(SMOKE100))
+
+diabetesData$SMOKE100[diabetesData$SMOKE100 ==2 ]<- 0
+diabetesData = subset(diabetesData, !SMOKE100 %in% c(7,9))
+summary(diabetesData$SMOKE100)
+```
+
+```         
+#CVDSTRK3
+# Change 2 to 0 because it is No
+# Remove all 7 (dont knows)
+# Remove all 9 (refused)
+```
+
+```{r}
+sum(is.na(diabetesData$CVDSTRK3))
+
+diabetesData$CVDSTRK3[diabetesData$CVDSTRK3 ==2 ]<- 0
+diabetesData = subset(diabetesData, !CVDSTRK3 %in% c(7,9))
+summary(diabetesData$CVDSTRK3)
+
+```
+
+```         
+#_MICHD
+#Change 2 to 0 because this means did not have MI or CHD
+```
+
+```{r}
+sum(is.na(diabetesData["_MICHD"]))
+diabetesData = subset(diabetesData, !is.na(diabetesData["_MICHD"]))
+diabetesData['_MICHD'][diabetesData["_MICHD"] ==2 ]<- 0
+summary(diabetesData["_MICHD"])
+
+
+```
+
+```         
+#_TOTINDA
+# 1 for physical activity
+# change 2 to 0 for no physical activity
+# Remove all 9 (don't know/refused)
+```
+
+```{r}
+sum(is.na(diabetesData["_TOTINDA"]))
+diabetesData = subset(diabetesData, !is.na(diabetesData["_TOTINDA"]))
+diabetesData = subset(diabetesData, diabetesData["_TOTINDA"] !=9)
+diabetesData['_TOTINDA'][diabetesData["_TOTINDA"] ==2 ]<- 0
+summary(diabetesData["_TOTINDA"])
+```
+
+```         
+#_FRTLT1A
+# Change 2 to 0. this means no fruit consumed per day. 1 will mean consumed 1 or more pieces of fruit per day 
+# remove all dont knows and missing 9
+```
+
+```{r}
+sum(is.na(diabetesData["_FRTLT1A"]))
+diabetesData = subset(diabetesData, diabetesData["_FRTLT1A"] !=9)
+diabetesData['_FRTLT1A'][diabetesData["_FRTLT1A"] == 2 ]<- 0
+summary(diabetesData["_FRTLT1A"])
+```
+
+```         
+#_VEGLT1A
+# Change 2 to 0. this means no vegetables consumed per day. 1 will mean consumed 1 or more pieces of vegetable per day 
+# remove all dont knows and missing 9
+```
+
+```{r}
+sum(is.na(diabetesData["_VEGLT1A"]))
+diabetesData = subset(diabetesData, diabetesData["_VEGLT1A"] !=9)
+diabetesData['_VEGLT1A'][diabetesData["_VEGLT1A"] == 2 ]<- 0
+summary(diabetesData["_VEGLT1A"])
+```
+
+```         
+#_HLTHPLN
+# 1 is yes, change 2 to 0 because it is No health care access
+# remove 7 and 9 for don't know or refused
+```
+
+```{r}
+sum(is.na(diabetesData["_HLTHPLN"]))
+diabetesData = subset(diabetesData, diabetesData["_HLTHPLN"] !=9)
+diabetesData['_HLTHPLN'][diabetesData["_HLTHPLN"] == 2 ]<- 0
+summary(diabetesData["_HLTHPLN"])
+```
+
+```         
+#MEDCOST1
+# Change 2 to 0 for no, 1 is already yes
+# remove 7 for don/t know and 9 for refused
+```
+
+```{r}
+sum(is.na(diabetesData["MEDCOST1"]))
+diabetesData = subset(diabetesData, !is.na(MEDCOST1))
+diabetesData = subset(diabetesData, diabetesData["MEDCOST1"] !=7)
+diabetesData = subset(diabetesData, diabetesData["MEDCOST1"] !=9)
+diabetesData['MEDCOST1'][diabetesData["MEDCOST1"] == 2 ]<- 0
+summary(diabetesData["MEDCOST1"])
+```
+
+```         
+#GENHLTH
+# This is an ordinal variable that I want to keep (1 is Excellent -> 5 is Poor)
+# Remove 7 and 9 for don't know and refused
+```
+
+```{r}
+sum(is.na(diabetesData["GENHLTH"]))
+diabetesData = subset(diabetesData, !is.na(GENHLTH))
+diabetesData = subset(diabetesData, diabetesData["GENHLTH"] !=7)
+diabetesData = subset(diabetesData, diabetesData["GENHLTH"] !=9)
+summary(diabetesData["GENHLTH"])
+```
+
+```         
+#MENTHLTH
+# already in days so keep that, scale will be 0-30
+# change 88 to 0 because it means none (no bad mental health days)
+# remove 77 and 99 for don't know not sure and refused
+```
+
+```{r}
+sum(is.na(diabetesData["MENTHLTH"]))
+diabetesData = subset(diabetesData, diabetesData["MENTHLTH"] !=77)
+diabetesData = subset(diabetesData, diabetesData["MENTHLTH"] !=99)
+diabetesData['MENTHLTH'][diabetesData["MENTHLTH"] == 88 ]<- 0
+summary(diabetesData["MENTHLTH"])
+```
+
+```         
+#PHYSHLTH
+# already in days so keep that, scale will be 0-30
+# change 88 to 0 because it means none (no bad mental health days)
+# remove 77 and 99 for don't know not sure and refused
+```
+
+```{r}
+sum(is.na(diabetesData["PHYSHLTH"]))
+diabetesData = subset(diabetesData, !is.na(PHYSHLTH))
+diabetesData = subset(diabetesData, diabetesData["PHYSHLTH"] !=77)
+diabetesData = subset(diabetesData, diabetesData["PHYSHLTH"] !=99)
+diabetesData['PHYSHLTH'][diabetesData["PHYSHLTH"] == 88 ]<- 0
+summary(diabetesData["PHYSHLTH"])
+```
+
+```         
+#DIFFWALK
+# change 2 to 0 for no. 1 is already yes
+# remove 7 and 9 for don't know not sure and refused
+```
+
+```{r}
+sum(is.na(diabetesData["DIFFWALK"]))
+diabetesData = subset(diabetesData, diabetesData["DIFFWALK"] !=7)
+diabetesData = subset(diabetesData, diabetesData["DIFFWALK"] !=9)
+diabetesData['DIFFWALK'][diabetesData["DIFFWALK"] == 2 ]<- 0
+summary(diabetesData["DIFFWALK"])
+```
+
+```         
+#SEXVAR
+# in other words - is respondent male (somewhat arbitrarily chose this change because men are at higher risk for heart disease)
+# change 2 to 0 (female as 0). Male is 1
+```
+
+```{r}
+sum(is.na(diabetesData["SEXVAR"]))
+diabetesData['SEXVAR'][diabetesData["SEXVAR"] == 2 ]<- 0
+summary(diabetesData["SEXVAR"])
+```
+
+```         
+#_AGEG5YR
+# already ordinal. 1 is 18-24 all the way up to 13 wis 80 and older. 5 year increments.
+# remove 14 because it is don't know or missing
+```
+
+```{r}
+sum(is.na(diabetesData["_AGEG5YR"]))
+diabetesData = subset(diabetesData, diabetesData["_AGEG5YR"] !=14)
+summary(diabetesData["_AGEG5YR"])
+
+  
+```
+
+```         
+#_EDUCAG
+# This is already an ordinal variable with 1 being never attended school or kindergarten only up to 6 being college 4 years or more
+# Scale here is 1-6
+# Remove 9 for refused:
+```
+
+```{r}
+sum(is.na(diabetesData["_EDUCAG"]))
+diabetesData = subset(diabetesData, diabetesData["_EDUCAG"] !=9)
+summary(diabetesData["_EDUCAG"])
+```
+
+```         
+#INCOME3
+# Variable is already ordinal with 1 being less than $10,000 all the way up to 8 being $75,000 or more
+# Remove 77 and 99 for don't know and refused
+```
+
+```{r}
+sum(is.na(diabetesData["INCOME3"]))
+diabetesData = subset(diabetesData, diabetesData["INCOME3"] !=77)
+diabetesData = subset(diabetesData, diabetesData["INCOME3"] !=99)
+
+summary(diabetesData["INCOME3"])
+```
+
+```         
+#BIMG
+#Replace <18.5 - 0 debajo normal
+#Replace 18.5 > x <= 25  - 1 normal
+#Replace  25 > x <=30 - 2 sobrepeso
+#Replace >30 - 3 obesidad
+```
+
+```{r}
+diabetesData['BMIG'] = 1
+#sum(is.na(diabetesData["_BMI5"]))
+diabetesData["BMIG"][diabetesData["_BMI5"] <= 18.5] <- 0
+diabetesData["BMIG"][diabetesData["_BMI5"] > 18.5 & diabetesData["_BMI5"] <=25] <- 1
+diabetesData["BMIG"][diabetesData["_BMI5"] > 25 & diabetesData["_BMI5"] <=30] <- 2
+diabetesData["BMIG"][diabetesData["_BMI5"] > 30] <- 3
+
+summary(diabetesData["BMIG"])
+```
+
+```         
+#Check the shape of the dataset now: We have 253,680 cleaned rows and 22 columns (1 of which is our dependent variable)
+```
+
+```{r}
+dim(diabetesData)
+```
+
+```         
+#Check Class Sizes of the heart disease column
+```
+
+```{r}
+# diabetesData$DIABETE4
+summary(diabetesData$DIABETE4)
+```
+
+## Análisis exploratorio de los datos
+
+Para una mejor comprensión de las columnas, a continuación realizaremos un proceso de renombre de las mismas.
+
+```{r}
+library("dplyr")
+
+newDiabetesData <- diabetesData %>% 
+        dplyr::rename("Diabetes_012" = "DIABETE4",
+                      "HighBP"="_RFHYPE6",
+                      "HighChol"="TOLDHI3",
+                      "CholCheck"="_CHOLCH3",
+                      "BMI" = "_BMI5",
+                      "Smoker" = "SMOKE100",
+                      "Stroke" = "CVDSTRK3",
+                      "HeartDiseaseorAttack" = "_MICHD",
+                      "PhysActivity" = "_TOTINDA",
+                      "Fruits" = "_FRTLT1A",
+                      "Veggies" = "_VEGLT1A",
+                      "HvyAlcoholConsump" = "_RFDRHV7",
+                      "AnyHealthcare" = "_HLTHPLN",
+                      "NoDocbcCost" = "MEDCOST1",
+                      "GenHlth" = "GENHLTH",
+                      "MentHlth"  = "MENTHLTH",
+                      "PhysHlth" = "PHYSHLTH",
+                      "DiffWalk" = "DIFFWALK",
+                      "Sex" = "SEXVAR",
+                      "Age" = "_AGEG5YR",
+                      "Education" = "EDUCA",
+                      "Income" = "INCOME3",
+                      "State" = "_STATE"
+                      )
+```
+
+```{r}
+summary(newDiabetesData)
+write.csv2(newDiabetesData, "Practica2.csv", row.names=TRUE)
+
+```
+
+Para este caso, nos interesa separar en 2 clases la variable objetivo, 0 para no diabetes o diabetes en el embarazo y 1 para prediabetes y diabetes, para ello crearemos un dataset a partir del dataset principal, pero antes miraremos si existen valores nulos que puedan afectar el análisis.
+
+```{r}
+sort(colMeans(is.na(newDiabetesData)), decreasing = TRUE)
+
+```
+
+Se puede visualizar que no existen valores nulos en las columnas, es por ello que procedemos a generar las 2 clases objetivo.
+
+Para este caso, todas las personas diabéticas las agregamos en la clase pre diabético/diabético (1), y las personas sin diabetes y/o diabetes durante el embarazo en la clase 0.
+
+```{r}
+newDiabetesData$Diabetes_012[newDiabetesData$Diabetes_012 == 2] <- 1
+```
+
+A continuación graficaremos el número de personas con/sin diabetes en este estudio, así podremos ver a breves rasgos el resultado de la encuesta.
+
+```{r}
+
+    newDiabetesData%>% group_by(Diabetes_012) %>%
+    dplyr::summarise(total = n()) %>% 
+    ggplot(aes(x = c("No Diabeticos", "Diabeticos"), y=total, fill=c("No Diabeticos", "Diabeticos")))+
+    geom_col(stat = "identity") +
+    guides(fill = guide_legend(title = "Total"), color=guide_legend(title="Genero"))+
+    geom_text(aes(label=paste(round((total/sum(total)*100),2),"%"))) +
+    geom_point(bins = 30) +
+    labs(title='Personas Diabeticas/No Diabeticas en EEUU',
+             x='Diabeticos',
+             y='Total Personas',
+             colour = "Cylinders",
+             caption = "Año 2021")
+  
+    
+```
+
+Ahora bien, observamos que, dentro del conjunto de datos, gran porcentaje de la muestra son personas que no padecen diabetes o la padecieron durante el embarazo.
+
+Seleccionamos solo las personas que padecen de diabetes, ya que son nuestra población objetivo y analizaremos como influyen las diferentes características, como el consumo de tabaco en esta población, que equivale al 15,76% del dataset inicial.
+
+```{r}
+diabeticos <- newDiabetesData %>% filter(Diabetes_012 == 1)
+
+summary(diabeticos)
+```
+
+```{r}
+diabeticofumadores <- diabeticos %>% group_by(Smoker) %>% 
+  dplyr::summarize(total = n()) 
+  diabeticofumadores
+  
+  diabeticofumadores%>% 
+   ggplot(aes(x = c("No Fumador", "Fumador"), y=total, fill=c("No Fumador", "Fumador"))) +
+    geom_col(stat = "identity") +
+    guides(fill = guide_legend(title = "Total"), color=guide_legend(title="Genero"))+
+    geom_text(aes(label=paste(round((total/sum(total)*100),2),"%"))) +
+    geom_point(bins = 30) +
+    labs(title='Nº personas Diabeticas/Fumador en EEUU',
+             x='Fumador',
+             y='Total Personas',
+             colour = "Cylinders",
+             caption = "Año 2021")
+```
+
+Ahora bien, para este caso podemos observar que gran parte de las personas que padecen de diabetes son personas que tienen hábitos de consumo de tabaco con un 47,67% de la población del estudio, podemos a priori concluir que las personas diabetes tienen el habito de consumir tabaco.
+
+```{r}
+diabeticos %>% group_by(State) %>% 
+          dplyr::summarise(total = n()) %>% 
+          ggplot(aes(x = State, y=total)) +
+          geom_col(stat = "identity") +
+          geom_point(bins = 30) +
+        geom_text(aes(label=State)) +
+          labs(title='Nº personas Diabeticas por estados en EEUU',
+                   x='Estado',
+                   y='Total Personas',
+                   colour = "Cylinders",
+                   caption = "Año 2021")
+          
+# ggplot(data=diabeticos,aes(x=Diabetes_012,fill=diabeticos["State"]))+geom_bar()+ggtitle("Relación entre las variables conductor bebido y Estado")+labs(x="Número de conductores bebidos implicados")
+```
+
+A continuación, exploraremos las personas con diabetes y fumadoras, pero agrupados por género.
+
+```{r}
+diabeticofumadoresPorGenero <- diabeticos %>% filter(Smoker == 1) %>% group_by(Sex) %>% 
+  dplyr::summarize(total = n()) 
+
+  diabeticofumadoresPorGenero
+  
+  diabeticofumadoresPorGenero%>%
+   ggplot(aes(x = c("Femenino", "Masculino"), y=total, fill=c("Femenino", "Masculino"))) +
+    geom_col(stat = "identity") +
+    guides(fill = guide_legend(title = "Total"), color=guide_legend(title="Genero"))+
+    geom_text(aes(label=paste(round((total/sum(total)*100),2),"%"))) +
+    geom_point(bins = 30) +
+    labs(title='Nº personas Diabeticas/Fumador en EEUU',
+             x='Genero',
+             y='Total Personas',
+             colour = "Cylinders",
+             caption = "Año 2021")
+```
+
+Ahora bien, se puede observar que entre toda la población diabética de la muestra que fuma, el 57.07% corresponde al género Masculino.
+
+No solo el fumar es uno de los factores que se ha encontrado que influye directamente en la aparición de la enfermedad o en la aceleración de esta, tenemos otros factores como el colesterol, peso, actividad física, consumo de alcohol, consumo de frutas, entre otros factores que serán analizados a continuación.
+
+```{r}
+library("gridExtra")
+
+histList<- list()
+n = c("Smoker","Fruits","Veggies","HvyAlcoholConsump","AnyHealthcare","DiffWalk")
+diabeticosAux= diabeticos %>% select(all_of(n))
+
+for(y in 1:ncol(diabeticosAux))
+{
+  col <- names(diabeticosAux)[y]
+  ggp <- ggplot(diabeticosAux, aes_string(x = col)) +
+  geom_histogram(bins = 10, fill = "cornflowerblue", color = "black")
+  histList[[y]] <- ggp
+}
+
+multiplot(plotlist = histList, coles = 0)
+
+```
+
+Se puede apreciar que existen diferentes patologías o hábitos que influyen en la aparición o desarrollo de la enfermedad, además no es solo cuestión de si llevar una vida saludable o no, ya que esto depende también del nivel de educación y de los ingresos que percibe una persona, no es lo mismo una persona que percibe un sueldo mínimo, a este le cuesta un poco más poder adquirir alimentos de "calidad" y cubrir otros gastos de salud (revisiones periodicas, especialistas, etc), que una persona que tiene un sueldo mayor que le permite cubrir estas necesidades con mayor comodidad.
+
+Realizaremos un previo analisis de si el nivel de educación alcanzado entre las personas encuestadas y de ingresos tiene influencia.
+
+```{r}
+
+diabeticoEducacion <- diabeticos %>% group_by(Education) %>% 
+  dplyr::summarize(total = n()) 
+
+  diabeticoEducacion
+  
+  diabeticoEducacion%>%
+   ggplot(aes(x = Education, y=total, fill=Education)) +
+    geom_col(stat = "identity") +
+    guides(fill = guide_legend(title = "Total"), color=guide_legend(title="Educación"))+
+    geom_text(aes(label=paste(round((total/sum(total)*100),2),"%"))) +
+    geom_point(bins = 30) +
+    labs(title='Educación de las personas diabeticas en EEUU',
+             x='Educación',
+             y='Total Personas',
+             colour = "Cylinders",
+             caption = "Año 2021")
+```
+
+Ahora bien, una vez hemos analizado el nivel de educación de las personas que padecen de diabetes, podemos concluir que la falta o escasa educación no es un factor relevante, ya que vemos gran porcentaje de los diabéticos tienen una educación superior.
+
+A continuación, estudiaremos a priori el nivel de ingresos de las personas con diabetes, lo primero a tener en cuenta que los ingresos se encuentran agrupados en la siguiente estala descrita a continuación.
+
+Income scale 1-8 1 = less than \$10,000 5 = less than \$35,000 8 = \$75,000 or more
+
+```{r}
+
+  summary(diabeticos$Income)
+ 
+  diabeticoIngresos <- diabeticos %>% group_by(Income) %>% 
+  dplyr::summarize(total = n()) 
+
+  diabeticoIngresos
+  
+  diabeticoIngresos%>%
+   ggplot(aes(x = Income, y=total, fill=Income)) +
+    geom_col(stat = "identity") +
+    guides(fill = guide_legend(title = "Total"), color=guide_legend(title="Educación"))+
+    geom_text(aes(label=paste(round((total/sum(total)*100),2),"%"))) +
+    geom_point(bins = 30) +
+    labs(title='Educación de las personas diabeticas en EEUU',
+             x='Educación',
+             y='Total Personas',
+             colour = "Cylinders",
+             caption = "Año 2021")
+  
+  
+```
+
+Ahora bien, podemos apreciar que la mayoría de las personas que padecen de diabetes perciben unos ingresos mayor o igual a \$35,000, pensaríamos que a menor ingreso mayor podría ser el impacto de este en la salud de las personas, pero el caso es que la falta o escasez de esto no es un factor que influye directamente y que también hay que tener en cuenta el otro conjunto de factores.
+
+A continuación, vamos a analizar el índice de masa corporal de las personas que padecen de diabetes y de las personas que no lo padecen, ya que una persona con diabetes tiende a tener sobrepeso debido al consumo de alimentos altos en azucares y a la falta de actividad física.
+
+```{r}
+
+  summary(diabeticos$BMI)
+ 
+  diabeticoBMI <- diabeticos %>% group_by(BMI) %>% 
+  dplyr::summarize(total = n()) 
+
+  diabeticoBMI
+  
+    diabeticoBMI%>%
+    ggplot(aes(x = BMI, y=total, fill=BMI)) +
+    geom_point() + 
+    geom_line()+
+    guides(fill = guide_legend(title = "Total"), color=guide_legend(title="BMI"))+
+    geom_point(bins = 30) +
+    labs(title='Indice de masa corporal',
+             x='BMI',
+             y='Total Personas',
+             colour = "Cylinders",
+             caption = "Año 2021")
+```
+
+Indice de masa corporal en personas No diabetica
+
+```{r}
+
+  nodiabeticos <- newDiabetesData %>% filter(Diabetes_012 == 0)
+  summary(nodiabeticos$BMI)
+ 
+  nodiabeticoBMI <- nodiabeticos %>% group_by(BMI) %>% 
+  dplyr::summarize(total = n()) 
+
+  diabeticoBMI
+  
+    nodiabeticoBMI%>%
+    ggplot(aes(x = BMI, y=total, fill=BMI)) +
+    geom_point() + 
+    geom_line()+
+    guides(fill = guide_legend(title = "Total"), color=guide_legend(title="BMI"))+
+    geom_point(bins = 30) +
+    labs(title='Indice de masa corporal',
+             x='BMI',
+             y='Total Personas',
+             colour = "Cylinders",
+             caption = "Año 2021")
+```
+
+Si nos basamos en este grafico del índice de masa corporal, podemos ver que gran parte de las personas diabéticas de este estudio, tienen sobrepeso u obesidad, es por ello ,por lo que podemos concluir que el peso es algo que está relacionado directamente en la suma de varios factores que aportan a la aparición de esta enfermedad, no estamos afirmando que, si una persona con sobre peso u obesidad debe tener diabetes, No, pero si es más propensa a que padezca de esta enfermedad.
+
+Al igual que las personas con diabetes, podemos ver también que las personas sin diabetes padecen problemas de sobrepeso y obesidad, pero aun así no padecen de diabetes, ya que esta enfermedad no es solo condición del peso, sino que también son la suma de otros factores.
+
+Ahora veremos la cantidad de personas que, según su índice de masa corporal según la tabla, están clasificadas en los siguientes grupos:
+
+-   Debajo de lo normal
+
+-   Normal
+
+-   Sobrepeso
+
+-   Obesidad
+
+```{r}
+newDiabetesData%>% group_by(BMIG) %>% 
+      dplyr::summarize(total = n()) %>% 
+      ggplot(aes(x = BMIG, y=total, fill=c("Debajo normal", "Normal", "Sobrepeso", "Obesidad"))) +
+      geom_col(stat = "identity") +
+      guides(fill = guide_legend(title = "Total"), color=guide_legend(title="Estado"))+
+      geom_text(aes(label=paste(round((total/sum(total)*100),2),"%"))) +
+      geom_point(bins = 30) +
+      labs(title='Sobrepeso en la población',
+               x='Estado',
+               y='Total Personas',
+               colour = "Cylinders",
+               caption = "Año 2021")
+  
+```
+
+Si vemos un poco más a detalle de la gráfica, podemos observar que existe un gran porcentaje de personas que tiene o sobrepeso u obesidad, para ser más detallados, el 68,27% de toda la población de estudio tiene este problema con su salud, ahora para ser un poco más detallados con la población diabética, realizaremos el mismo estudio pero con esta población.
+
+```{r}
+#Diabeticos
+diabeticos%>% group_by(BMIG) %>% 
+      dplyr::summarize(total = n()) %>% 
+      ggplot(aes(x = BMIG, y=total, fill=c("Debajo normal", "Normal", "Sobrepeso", "Obesidad"))) +
+       geom_col(stat = "identity") +
+      guides(fill = guide_legend(title = "Total"), color=guide_legend(title="Estado"))+
+      geom_text(aes(label=paste(round((total/sum(total)*100),2),"%"))) +
+      geom_point(bins = 30) +
+      labs(title='Sobrepeso en la población diabetica',
+               x='Estado',
+               y='Total Personas',
+               colour = "Cylinders",
+               caption = "Año 2021")
+
+#No diabeticos
+nodiabeticos%>% group_by(BMIG) %>% 
+      dplyr::summarize(total = n()) %>% 
+      ggplot(aes(x = BMIG, y=total, fill=c("Debajo normal", "Normal", "Sobrepeso", "Obesidad"))) +
+      geom_col(stat = "identity") +
+      guides(fill = guide_legend(title = "Total"), color=guide_legend(title="Estado"))+
+      geom_text(aes(label=paste(round((total/sum(total)*100),2),"%"))) +
+      geom_point(bins = 30) +
+      labs(title='Sobrepeso en la población no diabetica',
+               x='Estado',
+               y='Total Personas',
+               colour = "Cylinders",
+               caption = "Año 2021")
+```
+
+Ahora si analizamos ambos lados de la moneda (diabéticos - no diabéticos), podemos observar que entre la población diabética existe un mayor número de problema de obesidad y sobrepeso, cerca de un 84,02% con respecto a la población no diabética que es cerca de un 65,12%, con esto podemos hacer una pequeña conclusión, y decir que la persona diabética es más propensa a padecer de sobrepeso u obesidad, debido a su estilo de vida.
+
+Muchas veces relacionamos el sobrepeso a otras enfermedades o dificultades que nos impiden realizar actividad física, entre ellos la dificultad de movilidad. A continuación, analizaremos si las personas que tienen sobrepeso u obesidad presentan algún problema de movilidad.
+
+```{r}
+#Diabeticos y movilidad
+diabeticos%>% filter(BMIG %in% c(2,3)) %>% 
+      group_by(DiffWalk) %>%
+      dplyr::summarize(total = n()) %>%
+      ggplot(aes(x = c("No", "Si"), y=total, fill=c("No", "Si"))) +
+       geom_col(stat = "identity") +
+      guides(fill = guide_legend(title = "Total"), color=guide_legend(title="Estado"))+
+      geom_text(aes(label=paste(round((total/sum(total)*100),2),"%"))) +
+      geom_point(bins = 30) +
+      labs(title='Dificultad para caminar en en la población diabetica con Sobrepeso',
+               x='Dificultad para caminar',
+               y='Total Personas',
+               colour = "Cylinders",
+               caption = "Año 2021")
+```
+
+Para este caso, podemos observar que un 65,91% de las personas diabeticas que no realizan actividad fisica, presentan problemas de movilidad, es por ello que no hacen ejercicios, ya que un problema (actividad fisica) de desencadena en base a otro problema (movilidad).
+
+Ahora bien, hasta este punto hemos analizado casi todas las variables (Factores) que hacen que una persona padezca de diabetes.
+
+Para el siguiente analisis, necesitaremos categorizar la variable FRUITJU2 que hace referencia a si una persona consume jugos naturales sin azucares añadados, en base a la siguiente tabla se procede a realizar la categorización.
+
+```         
+#FRUITJU2
+# Not including fruit-flavored drinks or fruit juices with added sugar, how often did you drink 100% fruit juice such as apple or orange juice?
+#Remove 777 and 999 for don't know and refused
+#Replace 101 - 199 per 1 a diario
+#Replace 201 - 299 per 2 semanal
+#Replace 300 per 3 menos de una vez al mes
+#Replace 301 - 399 -> 4 mensual / anual
+#Replace 555 per 0 nunca
+```
+
+```{r}
+sum(is.na(diabeticos["FRUITJU2"]))
+summary(diabeticos$FRUITJU2)
+diabeticos = subset(diabeticos, diabeticos["FRUITJU2"] !=777)
+diabeticos = subset(diabeticos, diabeticos["FRUITJU2"] !=999)
+
+diabeticos["FRUITJU2"][diabeticos["FRUITJU2"]==555] <- 0
+diabeticos["FRUITJU2"][diabeticos["FRUITJU2"]>=101 & diabeticos["FRUITJU2"]<=199] <- 1
+diabeticos["FRUITJU2"][diabeticos["FRUITJU2"]>=201 & diabeticos["FRUITJU2"]<=299] <- 2
+diabeticos["FRUITJU2"][diabeticos["FRUITJU2"]==300] <- 3
+diabeticos["FRUITJU2"][diabeticos["FRUITJU2"]>=301 & diabeticos["FRUITJU2"]<=399] <- 4
+
+```
+
+La aparición o desarrollo de esta enfermedad se la relaciona muchas veces con el consumo excesivo de azucares, no solo en las frutas y vegetales, sino que está presente muchas veces en alimentos que son catalogados como "dañinos para la salud" por expertos en la salud, estos alimentos suelen ser ultra procesados y bebidas con alto porcentaje de azucares añadidos, como los zumos embotellados artificiales y gaseosas.
+
+La recomendación de los expertos de la salud es que estas bebidas sean reemplazadas por zumos naturales o directamente se elimine su consumo, es por ello que en esta encuesta se pregunta a las personas sobre la frecuencia con la que consumen bebidas naturales y las respuestas obtenidas serán analizadas a continuación y así poder sacar una conclusión, si en realidad esto puede ser o no un factor en la enfermedad.
+
+```{r}
+
+  FRUITJU2Summary <- c("No Consume", "A diario", "Semanal", "< 1 vez al mes", "Mensual/Anual")
+   diabeticos %>% group_by(FRUITJU2) %>% 
+    dplyr::summarize(total = n()) %>%
+      ggplot(aes(x = FRUITJU2, y=total, fill=FRUITJU2Summary)) +
+      geom_col(stat = "identity") +
+      #theme(axis.text.x = element_text(angle = 90, size=4)) +
+      guides(fill = guide_legend(title = "Total"), color=guide_legend(title="Educación"))+
+      geom_text(aes(label=paste(round((total/sum(total)*100),2),"%"))) +
+      geom_point(bins = 30) +
+      labs(title='Consumo de Zumo natural',
+               x='Frecuencia',
+               y='Total Personas',
+               colour = "Cylinders",
+               caption = "Año 2021")
+```
+
+Podemos observar que cerca del 48% de las personas con diabetes no consumen zumos naturales sin azucares añadidos, se estima que de las personas que padecen de esta enfermedad consumen bebidas artificiales que tienen alto contenido en azucares, tales como las gaseosas, zumos, entre otras bebidas más.
+
+A continuación, analizaremos otros factores en las personas con diabetes, factores que hacen que el control de la enfermedad sea más llevadero, como la frecuencia con la que se controla la glucosa, pruebas médicas periódicas para conocer la evolución de la enfermedad y frecuencia con la que un médico le realiza el control de la enfermedad.
+
+```         
+#BLDSUGAR Con qué frecuencia se controla la glucosa o el azúcar en sangre
+#replace 101 - 199 per 1 - una vez por dia
+#replace 201 - 299 per 2 - una vez por semana
+#replace 301 - 399 per 3 - una vez al mes
+#replace 401 - 499 per 4 - una vez al año
+#replace 888 per 0 - nunca
+#removed 999, 777, BLANK
+```
+
+```{r}
+
+sum(is.na(diabeticos["BLDSUGAR"]))
+diabeticos["BLDSUGAR"][is.na(diabeticos["BLDSUGAR"])] <- 0
+diabeticos["BLDSUGAR"][diabeticos["BLDSUGAR"] >= 101 & diabeticos["BLDSUGAR"] <=199] <- 1
+diabeticos["BLDSUGAR"][diabeticos["BLDSUGAR"] >= 201 & diabeticos["BLDSUGAR"] <=299] <- 2
+diabeticos["BLDSUGAR"][diabeticos["BLDSUGAR"] >= 301 & diabeticos["BLDSUGAR"] <=399] <- 3
+diabeticos["BLDSUGAR"][diabeticos["BLDSUGAR"] >= 401 & diabeticos["BLDSUGAR"] <=499] <- 4
+diabeticos["BLDSUGAR"][diabeticos["BLDSUGAR"] == 888] <- 0
+diabeticos = subset(diabeticos, diabeticos["BLDSUGAR"] !=999)
+diabeticos = subset(diabeticos, diabeticos["BLDSUGAR"] !=777)
+```
+
+```{r}
+summary(diabeticos$BLDSUGAR)
+ BLDSUGARSummary <- c("Nunca", "A diario", "Semanal", "Mensual", "Anual")
+   diabeticos %>% group_by(BLDSUGAR) %>% 
+    dplyr::summarize(total = n()) %>%
+      ggplot(aes(x = BLDSUGARSummary, y=total, fill=BLDSUGARSummary)) +
+      geom_col(stat = "identity") +
+      #theme(axis.text.x = element_text(angle = 90, size=4)) +
+      guides(fill = guide_legend(title = "Total"), color=guide_legend(title="Educación"))+
+      geom_text(aes(label=paste(round((total/sum(total)*100),2),"%"))) +
+      geom_point(bins = 30) +
+      labs(title='Control de glucosa',
+               x='Frecuencia',
+               y='Total Personas',
+               colour = "Cylinders",
+               caption = "Año 2021")
+```
+
+Vemos que el control de la glucosa no es algo muy habitual en las personas que padecen de diabetes, es por ello que muchos dejan que la enfermedad avance hasta tal punto que trae complicación para su salud, complicaciones como amputación de extremidades, pérdida de visión, etc.
+
+```         
+#DOCTDIAB Visita medica por su diabetes en los ultimos 12 meses
+#replace 1 - 76 Number of times, 76=76 or more
+#replace 1 - 20 per 1 -> de una a 20 veces
+#replace 21 - 40 per 2 -> de 21 a 40 veces
+#replace 41 - 60 per 3 -> de 41 a 60 veces
+#replace 61 > n  per 4 -> igual o mas de 61 veces
+
+#replace 88  - 0 ninguno
+#remove 77, 99,BLANK
+```
+
+```{r}
+sum(is.na(diabeticos["DOCTDIAB"]))
+diabeticos = subset(diabeticos, !is.na(diabeticos["DOCTDIAB"]))
+diabeticos["DOCTDIAB"][diabeticos["DOCTDIAB"] == 88] <- 0
+diabeticos = subset(diabeticos, diabeticos["DOCTDIAB"] !=77)
+diabeticos = subset(diabeticos, diabeticos["DOCTDIAB"] !=99)
+diabeticos["DOCTDIAB"][diabeticos["DOCTDIAB"] >= 1 & diabeticos["DOCTDIAB"] <=20] <- 1
+diabeticos["DOCTDIAB"][diabeticos["DOCTDIAB"] >= 21 & diabeticos["DOCTDIAB"] <=40] <- 2
+diabeticos["DOCTDIAB"][diabeticos["DOCTDIAB"] >= 41 & diabeticos["DOCTDIAB"] <=60] <- 3
+diabeticos["DOCTDIAB"][diabeticos["DOCTDIAB"] > 60] <- 4
+
+
+summary(diabeticos$DOCTDIAB)
+```
+
+```{r}
+DOCTDIABummary <- c("Ninguno", "entre 1 y 20", "Entre 21 y 40", "Entre 41 y 60", "Mas de 60")
+   diabeticos %>% group_by(DOCTDIAB) %>% 
+    dplyr::summarize(total = n()) %>%
+      ggplot(aes(x = DOCTDIABummary, y=total, fill=DOCTDIABummary)) +
+      geom_col(stat = "identity") +
+      #theme(axis.text.x = element_text(angle = 90, size=4)) +
+      guides(fill = guide_legend(title = "Total"), color=guide_legend(title="Educación"))+
+      geom_text(aes(label=paste(round((total/sum(total)*100),2),"%"))) +
+      geom_point(bins = 30) +
+      labs(title='Control de glucosa',
+               x='Frecuencia',
+               y='Total Personas',
+               colour = "Cylinders",
+               caption = "Año 2021")
+```
+
+Se puede observar, que las personas enfermas de diabetes tienen habito de visitar al profesional médico para llevar un control de la enfermedad al menos 1 vez al año, aunque existe también un porcentaje considerable (10%) que no se plantea en llevar un control médico.
+
+Ahora bien, una vez en este punto, graficaremos una matriz de correlación que nos permitira ver cuales son las variables que estan debil y fuertemente correlacionadas entre ellas, en base a esta matriz concluiremos:
+
+```{r}
+if(!require("corrplot")) install.packages("corrplot"); library("corrplot")
+n = c("Diabetes_012","HighBP","HighChol","Smoker","CholCheck","Stroke","Fruits","Veggies","DiffWalk","Education","Income","Age","PhysHlth","MentHlth")
+
+factores= newDiabetesData %>% select(all_of(n))
+res<-cor(factores)
+corrplot(res,method="color",tl.col="black", tl.srt=30, order = "AOE",
+number.cex=0.75,sig.level = 0.01, addCoef.col = "black")
+```
+
+Existe una correlación positiva entre dos variables ya previsible entre diffWalk y PhysHlth, ademas de Income y Education, entre otras que están ligeramente correlacionadas entre ellas. Además, podemos observar que no existen correlaciones negativas significativas entre dos variables.
+
+## Proceso de análisis de componentes principale s - PCA
+
+A continuación aplicaremos tecnicas de analisis que nos permitan trabajar con nuevas características llamadas componentes, que son independientes entre sí.
+
+Esta tecnica nos permite representar el juego de datos en un nuevo sistema de coordenadas que denominamos componentes principales. Esta tecnica nos permite recoger la mejor variabilidad de los datos.
+
+Para no extender el analisis de todas las variables, proponemos seleccionar las caracteristicas que consideramos mas relevantes en este analisis, las cuales seran separadas y guardadas dentro de un nuevo dataset.
+
+```{r}
+diabeticosAuxPCA = newDiabetesData %>% select(all_of(c("Diabetes_012","Smoker","Fruits","Veggies","HvyAlcoholConsump","AnyHealthcare","DiffWalk")))
+```
+
+El primer paso sera la utilización de la función prcomp (Principal component), esta función requiere el dataset que se desea analizar, para este ejemplo escalaremos los valores.
+
+```{r}
+respca<- prcomp(diabeticosAuxPCA, scale=TRUE)
+names(respca)
+```
+
+Se puede apreciar que ahora contamos con una nueva variable, donde tendremos disponible la desviación tipica, la rotación, los centroides, las escales que seran graficadas mas adelante.
+
+Ahora bien, obtendremos la rotación y analizaremos un poco el resultado.
+
+```{r}
+head(respca$rotation)[,1:6] # Coordenadas de los datos en el nuevo sistema
+
+```
+
+Se puede apreciar que por cada coordenada, la rotación de cada componente para cada una de las variables disponibles del dataset, a breves rasgos podemos ver que variable tiene mayor peso en cada uno de los componentes.
+
+```{r}
+head(respca$center)# Coordenadas de los datos en el nuevo sistema
+
+```
+
+```{r}
+head(respca$sdev)# Coordenadas de los datos en el nuevo sistema
+
+```
+
+```{r}
+head(respca$x)# Coordenadas de los datos en el nuevo sistema
+
+```
+
+```{r}
+print("Componentes")
+dim(respca$rotation) #Numero de distintos componentes
+print("Desviaciones estandar de cada componente")
+respca$sdev #las desviaciones estandares de cada componente.
+print("varianza explicada por cada componente")
+respca$sdev^2 #varianza explicada por componente
+```
+
+Ahora bien, añadiremos el resultado obtenido de cada componente al dataset que fue previamente adaptado para este analisis, de esta forma podremos tener el resultado de cada componente, en cada fila con los datos originales.
+
+```{r}
+
+summary(respca)
+
+#Comprobaremos la importancia del componente 1
+xx<- respca$x
+xx<-as.data.frame(xx)
+diabeticosAuxPCA$PC1 <- xx$PC1
+diabeticosAuxPCA$PC2 <- xx$PC2
+diabeticosAuxPCA$PC3 <- xx$PC3
+diabeticosAuxPCA$PC4 <- xx$PC4
+diabeticosAuxPCA$PC5 <- xx$PC5
+diabeticosAuxPCA$PC6 <- xx$PC6
+head(diabeticosAuxPCA)
+# 
+# summary(dieabeticos_filtered$State)
+
+```
+
+Bien, ahora procedemos a imprimir una matriz de correlación y verificar la correlación entre el resultado de los componentes que fueron previamente obtenidos.
+
+```{r}
+cor(diabeticosAuxPCA)
+```
+
+Ahora bien, podemos ver que los componentes que mayor correlación tienen (por encima del 35%) con ciertas caracteristicas del dataset son los PC1, PC5, PC6 con [Smoker, HvyAlcoholConsump,Diabetes_012].
+
+A continuación hacemos uso de la función de PCA, esta es un poco mas sostisficada, ya que nos dara mas resultados, e incluso los valores perdidos, que podran ser reemplazados utilizando algun metodo que permita la imputación de estos valores.
+
+Los parametros que se le pasan a la función son:
+
+-   Los datos
+
+-   Ningun tipo de escalado
+
+-   Numero de componentes
+
+-   Y ademas le pediremos que nos muestre todo esto en un grafico, donde podemos ver como se comportan cada una de las variables en un plano bidimensional.
+
+```{r}
+if (!require('FactoMineR')) install.packages('FactoMineR'); library('FactoMineR');
+respca2 <- PCA(X=diabeticosAuxPCA, scale.unit=FALSE, ncp = 6, graph=TRUE)
+# print(respca2)
+# head(respca)
+```
+
+```{r}
+if (!require('factoextra')) install.packages('factoextra'); library('factoextra');
+
+get_pca(respca2)
+
+#Visualizaciones
+fviz_eig(respca2)
+
+
+fviz_pca_ind(respca2, col.ind = "cos2", gradient.cols=c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel=FALSE)
+fviz_pca_var(respca2)
+
+```
